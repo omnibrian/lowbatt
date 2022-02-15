@@ -1,0 +1,10 @@
+[Unit]
+Description=Automatically notify of battery status at set thresholds
+
+[Timer]
+OnBootSec=5m
+OnUnitInactiveSec=30
+Unit=${NAME}.service
+
+[Install]
+WantedBy=graphical.target

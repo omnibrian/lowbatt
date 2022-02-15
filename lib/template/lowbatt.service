@@ -1,0 +1,7 @@
+[Unit]
+Description=Automatically notify of battery status at set thresholds
+Documentation=man:${NAME}(1)
+
+[Service]
+Type=simple
+ExecStart=${PREFIX}/bin/${NAME} invoke
