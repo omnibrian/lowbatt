@@ -27,9 +27,21 @@ if [[ "$@" == *--help* ]] ; then
   exit
 fi
 
-msg() {
+log() {
   echo -e "$(date -Iseconds): ${1-}" | tee >(logger -t "${name}") >&2
 }
+
+msg() {
+  echo >&2 -e "${1-}"
+}
+
+# config
+config_file=/etc/lowbatt.conf
+config_values=(
+  low_threshold
+  danger_threshold
+  critical_threshold
+)
 
 # default values
 low_threshold=30
@@ -42,7 +54,6 @@ battery_status_file="${battery_folder}/status"
 battery_percent_file="${battery_folder}/capacity"
 
 lock_file=/tmp/${name}.lock
-config_file=/etc/${name}.conf
 
 # invoke logic
 notify-send-all() {
@@ -62,7 +73,7 @@ check-notify() {
 
   battery_percent=$(cat ${battery_percent_file})
   if [[ ${last_notify} -gt ${!1} ]] && [[ ${battery_percent} -le ${!1} ]] ; then
-    msg "Battery is below ${!1}% (${1}), sending notification"
+    log "Battery is below ${!1}% (${1}), sending notification"
     notify-send-all "${2}" "Battery below ${!1}%"
     echo "${battery_percent}" > ${lock_file}
     return 0
@@ -74,16 +85,50 @@ check-notify() {
 # handle command
 if [[ ${#} -lt 1 ]] ; then
   usage
-  echo >&2 -e "\nNo command passed in"
+  msg "\nNo command passed in"
   exit 1
 fi
 
 case "${1-}" in
   get)
-    echo >&2 "Not yet implemented"
+    if [[ -f "${config_file}" ]] ; then
+      source "${config_file}"
+    fi
+
+    for name in "${config_values[@]}" ; do
+      echo "${name}=${!name}"
+    done
     ;;
   set)
-    echo >&2 "Not yet implemented"
+    if [[ ${#} -lt 3 ]] ; then
+      msg "You need to include the parameter to set and its value: ${0} ${1} low_threshold 30"
+      exit 1
+    fi
+
+    if [[ -f "${config_file}" ]] ; then
+      source "${config_file}"
+    fi
+
+    valid_name=false
+    for name in "${config_values[@]}" ; do
+      if [[ "${name}" == "${2}" ]] ; then
+        valid_name=true
+      fi
+    done
+
+    if [[ "${valid_name}" != "true" ]] ; then
+      msg "Invalid config value, must be one of: ${config_values[*]}"
+      exit 1
+    fi
+
+    touch "${config_file}"
+    if grep "^${2}=" "${config_file}" &>/dev/null ; then
+      sed "s/^${2}=.*/${2}=${3}/" -i "${config_file}"
+    else
+      echo "${2}=${3}" >> "${config_file}"
+    fi
+
+    msg "Configuration file updated"
     ;;
   invoke)
     if [[ "$(cat ${battery_status_file})" != "Discharging" ]] ; then
@@ -92,6 +137,10 @@ case "${1-}" in
         rm ${lock_file}
       fi
     else
+      if [[ -f "${config_file}" ]] ; then
+        source "${config_file}"
+      fi
+
       check-notify critical_threshold "Critical battery level" || \
       check-notify danger_threshold "Very low battery" || \
       check-notify low_threshold "Low battery" || \
